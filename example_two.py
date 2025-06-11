@@ -6,6 +6,7 @@ from torch.fx.passes.graph_drawer import FxGraphDrawer
 from torch._dynamo.testing import rand_strided
 from random import randint
 import types
+from tools import inspect_backend
 
 import logging
 # torch._logging.set_logs(graph_breaks=True)
@@ -35,16 +36,10 @@ os.environ["TORCH_LOGS"] = "+dynamo"
 class Model(nn.Module):
     def __init__(self):
         super().__init__()
-        
+
     def forward(self, x):
-        # Parallel computation paths with torch functions
         path1 = torch.sin(x)
         path2 = torch.cos(x)
-        
-        # Graph break using print (not traceable)
-        # print("Graph break here")
-        
-        # Combine and return
         return path1 ** 2 + path2 ** 2
 
 # Part 1: A model that works well with both FX and Dynamo
@@ -123,36 +118,11 @@ class ModelWithPythonOps(nn.Module):
 # Create sample input
 sample_input = torch.randn(2, 3, 32, 32)
 
-from itertools import count
-svg_counter = count()
-
-def save_fx_graph(gm, name_prefix="graph"):
-    dot_graph = FxGraphDrawer(gm, f"{name_prefix}_{next(svg_counter)}")
-    svg = dot_graph.get_dot_graph().create_svg()
-    with open(f"{name_prefix}_{svg_counter}_{randint(0, 100)}.svg", "wb") as f:
-        f.write(svg)
-
-def inspect_backend(gm, sample_inputs):
-    print("Calling Backend")
-    print(gm.print_readable())
-    save_fx_graph(gm, "main")
-
-    for name, mod in gm.named_modules():
-        if name != "" and isinstance(mod, torch.fx.GraphModule):
-            print(f"Found subgraph : {name}")
-            save_fx_graph(mod, f"{name}")
-
-    return gm.forward
-
 torch._dynamo.reset()
-# compiled_f = torch.compile(model, backend=inspect_backend)
 
-# compiled_f(model, sample_input)
-# Test models with Dynamo
-
-model = Model()
-compiled = torch.compile(model, backend=inspect_backend)
-val = compiled(sample_input)
+# model = Model()
+# compiled = torch.compile(model, backend=inspect_backend)
+# val = compiled(sample_input)
 # print(val)
 
 # model1 = TracableModel()
@@ -170,7 +140,20 @@ val = compiled(sample_input)
 # val3 = compiled3(sample_input)
 # print(val3)
 
+def toy_example(a, b):
+    x = a / (torch.abs(a) + 1)
+    print("woo")
+    if b.sum() < 0:
+        b = b * -1
+    return x * b
 
+a= torch.randn(10)
+b = torch.randn(10)
+
+val = torch.compile(toy_example, backend=inspect_backend)(a, b)
+print(val)
+# explanation = dynamo.explain(toy_example)(torch.randn(10), torch.randn(10))
+# print(explanation)
 
 
 
